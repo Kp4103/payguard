@@ -58,3 +58,19 @@
   }
 }
 
+@keyframes fillText {
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.mask-text {
+  animation: fillText 2s linear infinite;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+

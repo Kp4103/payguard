@@ -12,6 +12,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { DateRangePickerDialog } from "@/components/date-range-picker-dialog"
 import { format } from "date-fns"
 import type { DateRange } from "@/components/date-range-picker-dialog"
+import { SendMoneyDialog } from "@/components/send-money-dialog"
+import { LoadingScreen } from "@/components/loading-screen"
 
 // Mock data for charts
 const balanceHistory = [
@@ -52,6 +54,7 @@ export default function Dashboard() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [searchQuery, setSearchQuery] = useState("")
+  const [isSendMoneyOpen, setIsSendMoneyOpen] = useState(false)
 
   const fetchExchangeRates = useCallback(async () => {
     try {
@@ -104,8 +107,17 @@ export default function Dashboard() {
     [currency, exchangeRates, isLoading],
   )
 
+  const handleSendMoney = useCallback(
+    (recipient: string, amount: number) => {
+      console.log(`Sending ${formatCurrency(amount, true)} to ${recipient}`)
+      // Here you would implement the actual money sending logic
+      setIsSendMoneyOpen(false)
+    },
+    [formatCurrency],
+  )
+
   if (isLoading) {
-    return <div className="flex justify-center items-center h-screen">Loading exchange rates...</div>
+    return <LoadingScreen />
   }
 
   return (
@@ -209,6 +221,8 @@ export default function Dashboard() {
                 onChange={(e) => handleSearch(e.target.value)}
               />
             </div>
+            <Button onClick={() => setIsSendMoneyOpen(true)}>Send Money</Button>
+            <SendMoneyDialog onSendMoney={handleSendMoney} open={isSendMoneyOpen} onOpenChange={setIsSendMoneyOpen} />
           </div>
         </div>
 
