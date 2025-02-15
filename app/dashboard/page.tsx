@@ -1,7 +1,17 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { LayoutDashboard, Settings, Search, Calendar, SlidersHorizontal, MoreVertical, LogOut } from "lucide-react"
+import {
+  LayoutDashboard,
+  Settings,
+  Search,
+  Calendar,
+  SlidersHorizontal,
+  MoreVertical,
+  LogOut,
+  ArrowUpRight,
+  ArrowDownLeft,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -11,9 +21,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DateRangePickerDialog } from "@/components/date-range-picker-dialog"
 import { format } from "date-fns"
-import type { DateRange } from "@/components/date-range-picker-dialog"
+import type { DateRange } from "react-day-picker"
 import { SendMoneyDialog } from "@/components/send-money-dialog"
 import { LoadingScreen } from "@/components/loading-screen"
+import { signOut, useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 
 // Mock data for charts
 const balanceHistory = [
@@ -31,20 +43,34 @@ const balanceHistory = [
   { date: "Dec", income: 1500, expense: 1100, profit: 400 },
 ]
 
-const transactions = [
-  { id: 1, type: "Internal Payment", amount: 192.0, date: "July 26,2023", card: "visa" },
-  { id: 2, type: "External Payment", amount: -216.0, date: "July 26,2023", card: "mastercard" },
-  { id: 3, type: "External Payment", amount: -221.0, date: "stripe@pointfocus.com", card: "stripe" },
-  { id: 4, type: "Internal Payment", amount: 231.0, date: "July 26,2023", card: "visa" },
-  { id: 5, type: "External Payment", amount: -211.0, date: "July 26,2023", card: "visa" },
-]
-
 const miniChartData = Array.from({ length: 10 }, (_, i) => ({
   name: i,
   value: Math.random() * 100,
 }))
 
+interface UserData {
+  name: string
+  email: string
+  accountBalance: number
+}
+
+interface TransactionData {
+  id: number
+  senderEmail: string
+  receiverEmail: string
+  amount: number
+  dateTime: string
+}
+
+interface DashboardStats {
+  totalIncome: number
+  totalExpense: number
+  currentBalance: number
+}
+
 export default function Dashboard() {
+  const router = useRouter()
+  const [userData, setUserData] = useState<UserData | null>(null)
   const [selectedPeriod, setSelectedPeriod] = useState("30 days")
   const [currency, setCurrency] = useState("USD")
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({})
@@ -55,6 +81,26 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [searchQuery, setSearchQuery] = useState("")
   const [isSendMoneyOpen, setIsSendMoneyOpen] = useState(false)
+  const [transactions, setTransactions] = useState<TransactionData[]>([])
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
+    totalIncome: 1000,
+    totalExpense: 0,
+    currentBalance: 1000,
+  })
+  const { data: session } = useSession()
+
+  const fetchUserData = useCallback(async () => {
+    try {
+      const response = await fetch("/api/user")
+      if (!response.ok) {
+        throw new Error("Failed to fetch user data")
+      }
+      const data = await response.json()
+      setUserData(data)
+    } catch (error) {
+      console.error("Error fetching user data:", error)
+    }
+  }, [])
 
   const fetchExchangeRates = useCallback(async () => {
     try {
@@ -68,9 +114,44 @@ export default function Dashboard() {
     }
   }, [])
 
+  const fetchTransactions = useCallback(async () => {
+    try {
+      const response = await fetch("/api/transactions")
+      if (!response.ok) {
+        throw new Error("Failed to fetch transactions")
+      }
+      const data = await response.json()
+      setTransactions(data)
+    } catch (error) {
+      console.error("Error fetching transactions:", error)
+    }
+  }, [])
+
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      const response = await fetch("/api/dashboard-stats")
+      if (!response.ok) {
+        throw new Error("Failed to fetch dashboard stats")
+      }
+      const data = await response.json()
+      setDashboardStats(data)
+      setUserData((prevData) => (prevData ? { ...prevData, accountBalance: data.currentBalance } : null))
+    } catch (error) {
+      console.error("Error fetching dashboard stats:", error)
+    }
+  }, [])
+
   useEffect(() => {
+    fetchUserData()
     fetchExchangeRates()
-  }, [fetchExchangeRates])
+    fetchDashboardStats()
+  }, [fetchUserData, fetchExchangeRates, fetchDashboardStats])
+
+  useEffect(() => {
+    if (session) {
+      fetchTransactions()
+    }
+  }, [session, fetchTransactions])
 
   useEffect(() => {
     if (isDarkTheme) {
@@ -108,15 +189,30 @@ export default function Dashboard() {
   )
 
   const handleSendMoney = useCallback(
-    (recipient: string, amount: number) => {
-      console.log(`Sending ${formatCurrency(amount, true)} to ${recipient}`)
-      // Here you would implement the actual money sending logic
-      setIsSendMoneyOpen(false)
+    async (recipient: string, amount: number) => {
+      try {
+        await fetch("/api/transactions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ receiverEmail: recipient, amount }),
+        })
+        fetchUserData()
+        fetchTransactions()
+      } catch (error) {
+        console.error("Error sending money:", error)
+      }
     },
-    [formatCurrency],
+    [fetchUserData, fetchTransactions],
   )
 
-  if (isLoading) {
+  const handleSignOut = async () => {
+    await signOut({ redirect: false })
+    router.push("/auth")
+  }
+
+  if (isLoading || !userData) {
     return <LoadingScreen />
   }
 
@@ -189,16 +285,21 @@ export default function Dashboard() {
         <div className="flex-shrink-0 pt-4 border-t border-border flex items-center justify-between">
           <div className="flex items-center">
             <img
-              src={`https://api.dicebear.com/6.x/pixel-art/svg?seed=ShaniFetrianti&backgroundColor=b6e3f4`}
-              alt="Shani Fetrianti"
+              src={`https://api.dicebear.com/6.x/pixel-art/svg?seed=${userData.name}&backgroundColor=b6e3f4`}
+              alt={userData.name}
               className="w-8 h-8 rounded-full mr-3"
             />
             <div>
-              <p className="text-sm font-medium">Shani Fetrianti</p>
-              <p className="text-xs text-muted-foreground">Shani@payguard.com</p>
+              <p className="text-sm font-medium">{userData.name}</p>
+              <p className="text-xs text-muted-foreground">{userData.email}</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={handleSignOut}
+          >
             <LogOut className="h-5 w-5" />
           </Button>
         </div>
@@ -209,7 +310,7 @@ export default function Dashboard() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-2xl font-semibold">Banking Dashboard ({selectedPeriod})</h1>
-            <p className="text-muted-foreground">Welcome back, Shani!</p>
+            <p className="text-muted-foreground">Welcome back, {userData.name}!</p>
           </div>
           <div className="flex items-center space-x-4">
             <div className="relative">
@@ -301,7 +402,9 @@ export default function Dashboard() {
                         </svg>
                       </div>
                     </div>
-                    <p className="text-2xl font-bold tracking-wider">{formatCurrency(1000, true)}</p>
+                    <p className="text-2xl font-bold tracking-wider">
+                      {formatCurrency(dashboardStats.currentBalance, true)}
+                    </p>
                   </div>
 
                   <div className="space-y-1">
@@ -311,7 +414,7 @@ export default function Dashboard() {
                         <p className="text-xs font-light">Valid Thru</p>
                         <p className="text-sm">05/25</p>
                       </div>
-                      <p className="text-sm font-semibold tracking-wider">SHANI FETRIANTI</p>
+                      <p className="text-sm font-semibold tracking-wider">{userData.name.toUpperCase()}</p>
                     </div>
                   </div>
 
@@ -337,13 +440,13 @@ export default function Dashboard() {
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <h2 className="text-lg font-semibold">Total Income</h2>
-                  <p className="text-sm text-muted-foreground">August 2023</p>
+                  <p className="text-sm text-muted-foreground">Including initial balance</p>
                 </div>
                 <Button variant="ghost" size="icon">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-2xl font-bold mb-4">{formatCurrency(6421.1, true)}</p>
+              <p className="text-2xl font-bold mb-4">{formatCurrency(dashboardStats.totalIncome, true)}</p>
               <div className="text-sm text-green-500 mb-4">↑ 2.5%</div>
               <div className="h-24">
                 <ResponsiveContainer width="100%" height="100%">
@@ -361,13 +464,13 @@ export default function Dashboard() {
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <h2 className="text-lg font-semibold">Total Expends</h2>
-                  <p className="text-sm text-muted-foreground">August 2023</p>
+                  <p className="text-sm text-muted-foreground">All time</p>
                 </div>
                 <Button variant="ghost" size="icon">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-2xl font-bold mb-4">{formatCurrency(561.34, true)}</p>
+              <p className="text-2xl font-bold mb-4">{formatCurrency(dashboardStats.totalExpense, true)}</p>
               <div className="text-sm text-red-500 mb-4">↓ 1.0%</div>
               <div className="h-24">
                 <ResponsiveContainer width="100%" height="100%">
@@ -424,7 +527,7 @@ export default function Dashboard() {
           <div className="col-span-1">
             <div className="bg-card rounded-xl p-6">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-[15px] font-semibold">Recent Transaction</h2>
+                <h2 className="text-[15px] font-semibold">Recent Transactions</h2>
                 <Button variant="ghost" size="icon" className="h-8 w-8">
                   <MoreVertical className="h-4 w-4 text-muted-foreground" />
                 </Button>
@@ -436,40 +539,38 @@ export default function Dashboard() {
                       <div className="flex items-center gap-3">
                         <div
                           className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 
-                          ${transaction.card === "visa" ? "bg-[#1434CB]/10" : ""} 
-                          ${transaction.card === "mastercard" ? "bg-[#EB001B]/10" : ""}
-                          ${transaction.card === "stripe" ? "bg-[#635BFF]/10" : ""}`}
+                    ${transaction.senderEmail === userData?.email ? "bg-red-100" : "bg-green-100"}`}
                         >
-                          {transaction.card === "visa" && (
-                            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="#1434CB">
-                              <path d="M12 17.5c4.142 0 7.5-1.567 7.5-3.5S16.142 10.5 12 10.5S4.5 12.067 4.5 14s3.358 3.5 7.5 3.5z" />
-                            </svg>
-                          )}
-                          {transaction.card === "mastercard" && (
-                            <div className="w-6 h-6 relative">
-                              <div className="absolute inset-0 bg-[#EB001B] rounded-full opacity-80 -ml-1" />
-                              <div className="absolute inset-0 bg-[#F79E1B] rounded-full opacity-80 ml-1" />
-                            </div>
-                          )}
-                          {transaction.card === "stripe" && (
-                            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="#635BFF">
-                              <path d="M13.5 4.5h-3L12 9l1.5-4.5zM16.5 10.5L12 6l-4.5 4.5h9z" />
-                            </svg>
+                          {transaction.senderEmail === userData?.email ? (
+                            <ArrowUpRight className="h-6 w-6 text-red-600" />
+                          ) : (
+                            <ArrowDownLeft className="h-6 w-6 text-green-600" />
                           )}
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <p className="text-sm font-medium truncate">{transaction.type}</p>
-                          <p className="text-xs text-muted-foreground">{transaction.date}</p>
+                          <p className="text-sm font-medium truncate">
+                            {transaction.senderEmail === userData?.email ? "Sent to" : "Received from"}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {transaction.senderEmail === userData?.email
+                              ? transaction.receiverEmail
+                              : transaction.senderEmail}
+                          </p>
                         </div>
                       </div>
-                      <p
-                        className={`text-sm font-medium tabular-nums ${
-                          transaction.amount > 0 ? "text-green-500" : "text-red-500"
-                        }`}
-                      >
-                        {transaction.amount > 0 ? "+" : ""}
-                        {formatCurrency(Math.abs(transaction.amount), true)}
-                      </p>
+                      <div className="text-right">
+                        <p
+                          className={`text-sm font-medium tabular-nums ${
+                            transaction.senderEmail === userData?.email ? "text-red-500" : "text-green-500"
+                          }`}
+                        >
+                          {transaction.senderEmail === userData?.email ? "-" : "+"}
+                          {formatCurrency(transaction.amount, true)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(transaction.dateTime).toLocaleString()}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>

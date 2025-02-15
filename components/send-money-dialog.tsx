@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +13,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  //DialogTrigger,
 } from "@/components/ui/dialog"
 
 interface SendMoneyDialogProps {
@@ -23,22 +24,44 @@ interface SendMoneyDialogProps {
 export function SendMoneyDialog({ onSendMoney, open, onOpenChange }: SendMoneyDialogProps) {
   const [recipient, setRecipient] = useState("")
   const [amount, setAmount] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (recipient && amount) {
-      onSendMoney(recipient, Number.parseFloat(amount))
+    setIsLoading(true)
+    setError("")
+
+    try {
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          receiverEmail: recipient,
+          amount: Number(amount),
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to send money")
+      }
+
+      onSendMoney(recipient, Number(amount))
       onOpenChange(false)
       setRecipient("")
       setAmount("")
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "An error occurred")
+    } finally {
+      setIsLoading(false)
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* <DialogTrigger asChild>
-        <Button variant="default">Send Money</Button>
-      </DialogTrigger> */}
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Send Money</DialogTitle>
@@ -77,8 +100,11 @@ export function SendMoneyDialog({ onSendMoney, open, onOpenChange }: SendMoneyDi
               />
             </div>
           </div>
+          {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
           <DialogFooter>
-            <Button type="submit">Send</Button>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? "Sending..." : "Send"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

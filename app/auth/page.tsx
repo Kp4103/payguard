@@ -133,7 +133,7 @@ export default function AuthPage() {
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 
-          <Button className="w-full" type="submit" disabled={isLoading}>
+          <Button className="w-full bg-gray-900 hover:bg-gray-800" type="submit" disabled={isLoading}>
             {isLoading ? (
               <>
                 <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
@@ -146,21 +146,6 @@ export default function AuthPage() {
             )}
           </Button>
         </form>
-
-        <div className="mt-6 text-center">
-          <div className="text-sm text-gray-500 mb-4">Or sign in with</div>
-          <div className="flex justify-center space-x-4">
-            <Button variant="outline" size="icon" className="rounded-full w-12 h-12">
-              <Icons.google className="w-5 h-5" />
-            </Button>
-            <Button variant="outline" size="icon" className="rounded-full w-12 h-12">
-              <Icons.facebook className="w-5 h-5" />
-            </Button>
-            <Button variant="outline" size="icon" className="rounded-full w-12 h-12">
-              <Icons.apple className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
 
         <div className="mt-6 text-center">
           <Button variant="link" className="text-sm" onClick={() => setIsSignUp(!isSignUp)}>

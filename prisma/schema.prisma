@@ -17,3 +17,11 @@ model User {
   updatedAt       DateTime  @updatedAt
 }
 
+model Transaction {
+  id            String   @id @default(cuid())
+  senderEmail   String
+  receiverEmail String
+  amount        Float
+  dateTime      DateTime @default(now())
+}
+
