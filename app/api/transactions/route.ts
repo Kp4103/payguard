@@ -15,6 +15,15 @@ export async function POST(req: Request) {
     const { receiverEmail, amount } = await req.json()
     const senderEmail = session.user.email
 
+    // Check if receiver exists
+    const receiver = await prisma.user.findUnique({
+      where: { email: receiverEmail },
+    })
+
+    if (!receiver) {
+      return new NextResponse(JSON.stringify({ error: "Recipient email is not registered." }), { status: 400 })
+    }
+
     // Create the transaction
     const transaction = await prisma.$transaction(async (tx) => {
       const createdTransaction = await tx.transaction.create({
